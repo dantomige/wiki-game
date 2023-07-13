@@ -3,4 +3,65 @@ body {
     margin: auto;
     background: #FAFAFA;
     font-family: Helvetica;
+    background-image: url('https://images.unsplash.com/photo-1688141585146-1fb4a1358c87?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80');
+
+    color: white;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+/* body {
+    max-width: 1000px;
+    margin: auto;
+    background: #FAFAFA;
+    font-family: Helvetica;
+    background: #CFE7fA;
+    background: linear-gradient(to right, #CFE7fA 0%, #6393C1 100%);
+} */
+
+
+
+#navigation-bar {
+    display:flex;
+    flex: auto;
+    margin: center;
+    justify-content: space-between;
+}
+
+#main-body {
+    display: flex;
+    flex: auto;
+    margin: center;
+    align-items: center;
+    justify-content: center;
+}
+
+#content-body {
+    display:flex;
+    flex: auto;
+    margin: center; 
+}
+
+#blog-container {
+    display:flex;
+    flex: auto;
+    margin: center; 
+    justify-content: space-around;
+}
+
+th {
+    text-align: center;
+    font-weight: bold;
+}
+
+td {
+    text-align: center;
+}
+#footer {
+    display:flex;
+    flex: auto;
+    margin: center;
+    justify-content: space-between;
+
+    background: #CFE7fA;
+    background: linear-gradient(to right, #CFE7fA 0%, #6393C1 100%);
 }
