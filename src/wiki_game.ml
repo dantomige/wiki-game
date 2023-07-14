@@ -137,76 +137,95 @@ let visualize_command =
    [max_depth] is useful to limit the time the program spends exploring the
    graph. *)
 
-let rec dfs_url
-  current_url
-  depth
-  destination
-  how_to_fetch
-  ?(visited = Hash_set.create (module String))
-  ()
-  =
-  if depth >= 0
-  then (
-    Hash_set.add visited current_url;
-    if String.equal current_url destination
-    then
-      Some
-        [ Lambda_soup_utilities.get_title
-            (File_fetcher.fetch_exn how_to_fetch ~resource:current_url)
-        ]
-    else (
-      (*Recursion*)
-      let current_file =
-        File_fetcher.fetch_exn how_to_fetch ~resource:current_url
-      in
-      let neighbors_urls = get_linked_articles current_file in
-      (* print_s [%message (neighbors_urls : string list)]; *)
-      List.fold
-        neighbors_urls
-        ~init:None
-        ~f:(fun current_solution_path neighbor_url ->
-        let neighbor_url =
-          match how_to_fetch with
-          | Local _ -> neighbor_url
-          | Remote -> "https://en.wikipedia.org" ^ neighbor_url
-        in
-        (* print_s [%message (neighbor_url : string)]; print_s [%message
-           (current_url : string)]; *)
-        let neighbor_solution_path =
-          if not (Hash_set.mem visited neighbor_url)
-          then
-            dfs_url
-              neighbor_url
-              (depth - 1)
-              destination
-              how_to_fetch
-              ~visited
-              ()
-            |> Option.map ~f:(fun resulting_path ->
-                 Lambda_soup_utilities.get_title
-                   (File_fetcher.fetch_exn
-                      how_to_fetch
-                      ~resource:current_url)
-                 :: resulting_path)
-          else None
-        in
-        match current_solution_path, neighbor_solution_path with
-        | None, None -> None
-        | Some current_path, None -> Some current_path
-        | None, Some neighbor_path -> Some neighbor_path
-        | Some current_path, Some neighbor_path ->
-          if List.length current_path > List.length neighbor_path
-          then Some neighbor_path
-          else Some current_path)))
-  else None
+(* ([path as title], current_url, depth )*)
+let get_backtrack_list mapping src dest =
+  let rec find_list current_node =
+    if String.equal current_node src
+    then [ current_node ]
+    else find_list (Hashtbl.find_exn mapping current_node) @ [ current_node ]
+  in
+  find_list dest
 ;;
+
+let url_to_title url how_to_fetch =
+  Lambda_soup_utilities.get_title
+    (File_fetcher.fetch_exn how_to_fetch ~resource:url)
+;;
+
+let bfs_url current_url depth destination how_to_fetch =
+  let visited = Hash_set.create (module String) in
+  let queue = Queue.create () in
+  (*Child to parent*)
+  let back_track_mapping = Hashtbl.create (module String) in
+  Queue.enqueue queue (current_url, 0);
+  let rec traverse_bfs () =
+    let curr_node = Queue.dequeue queue in
+    match curr_node with
+    | Some (url, url_depth) ->
+      if url_depth < depth + 1
+      then
+        if String.equal url destination
+        then Some 0
+        else (
+          Hash_set.add visited url;
+          let neighbor_urls =
+            get_linked_articles
+              (File_fetcher.fetch_exn how_to_fetch ~resource:url)
+          in
+          List.iter neighbor_urls ~f:(fun neighbor_url ->
+            let neighbor_url =
+              match how_to_fetch with
+              | Local _ -> neighbor_url
+              | Remote -> "https://en.wikipedia.org" ^ neighbor_url
+            in
+            if not (Hash_set.mem visited neighbor_url)
+            then
+              Hashtbl.set
+                back_track_mapping
+                ~key:(url_to_title neighbor_url how_to_fetch)
+                ~data:(url_to_title url how_to_fetch);
+            Queue.enqueue queue (neighbor_url, url_depth + 1));
+          traverse_bfs ())
+      else None
+    | None -> None
+  in
+  traverse_bfs ()
+  |> Option.map ~f:(fun _ ->
+       get_backtrack_list
+         back_track_mapping
+         (url_to_title current_url how_to_fetch)
+         (url_to_title destination how_to_fetch))
+;;
+
+(* let rec dfs_url current_url depth destination how_to_fetch ?(visited =
+   Hash_set.create (module String)) () = print_s [%message (current_url :
+   string)]; print_s [%message (depth : int)]; if depth >= 0 then (
+   Hash_set.add visited current_url; if String.equal current_url destination
+   then Some [ Lambda_soup_utilities.get_title (File_fetcher.fetch_exn
+   how_to_fetch ~resource:current_url) ] else ( (*Recursion*) let
+   current_file = File_fetcher.fetch_exn how_to_fetch ~resource:current_url
+   in let neighbors_urls = get_linked_articles current_file in (* print_s
+   [%message (neighbors_urls : string list)]; *) List.fold neighbors_urls
+   ~init:None ~f:(fun current_solution_path neighbor_url -> let neighbor_url
+   = match how_to_fetch with | Local _ -> neighbor_url | Remote ->
+   "https://en.wikipedia.org" ^ neighbor_url in (* print_s [%message
+   (neighbor_url : string)]; print_s [%message (current_url : string)]; *)
+   print_s [%message (current_solution_path : string list option)]; match
+   current_solution_path with | Some solution -> Some solution | None -> if
+   not (Hash_set.mem visited neighbor_url) then dfs_url neighbor_url (depth -
+   1) destination how_to_fetch ~visited () |> Option.map ~f:(fun
+   resulting_path -> Lambda_soup_utilities.get_title (File_fetcher.fetch_exn
+   how_to_fetch ~resource:current_url) :: resulting_path) else None))) else
+   None ;; *)
 
 (* let convert_url_path_to_title_path url_path how_to_fetch= List.map
    url_path ~f:(fun url -> Lambda_soup_utilities.get_title
    (File_fetcher.fetch_exn how_to_fetch ~resource:url)) ;; *)
 
 let find_path ?(max_depth = 3) ~origin ~destination ~how_to_fetch () =
-  dfs_url origin max_depth destination how_to_fetch ()
+  (* print_s [%message (max_depth : int)]; dfs_url origin 3 destination
+     how_to_fetch () *)
+  bfs_url origin max_depth destination how_to_fetch
 ;;
 
 (* ignore (max_depth : int); ignore (origin : string); ignore (destination :
