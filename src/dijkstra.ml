@@ -50,7 +50,13 @@ module Edges = struct
 
   (* Exercise 1: Given a [t] (list of edges) and a [Node_id.t], implement a function that
      returns a list of neighboring nodes with their corresponding distances. *)
-  let neighbors t node_id : (Node_id.t * int) list = []
+  let neighbors t node_id : (Node_id.t * int) list = 
+    List.filter_map t ~f:(fun {Node_id.a: node1; b: node2; distance: weight} -> 
+      match (Node_id.equal node_id node1), (Node_id.equal node_id node2) with 
+      | true, false -> Some (node2, weight)
+      | false, true -> Some (node1, weight)
+      | true, true -> None (*Self loop?*)
+      | false, false -> None)
 
   (* We've left all of the tets in this file disabled. As you complete the exercises,
      please make sure to remove `[@tags "disabled"]` and run `dune runtest` to ensure that
@@ -118,7 +124,20 @@ module Nodes = struct
 
   (* Exercise 3: Given a [t], find the next node to process by selecting the node with the
      smallest distance along with its via route. *)
-  let next_node t : (Node_id.t * (int * Node_id.t)) option = None
+  let next_node t : (Node_id.t * (int * Node_id.t)) option = 
+    Map.fold t ~init:None (fun ~key:dest_node_id ~data:node node_tuple -> 
+      match Nodes.state dest_node_id, node_tuple with
+      | Todo of {distance = distance; via = via} -> 
+        (match node_tuple with 
+        | None -> Some (via, (distance, dest_node_id)) 
+        | Some (src, (curr_dis, dest)) -> if curr_dis > distance then Some (via, (distance, dest_node_id)) else Some (src, (curr_dis, dest)))
+        (*HOW TO HAND THE SOURCE OF THE ORIGIN NODE*)
+      | Origin -> Some (dest_node_id, (0, dest_node_id))
+      | Unseen | Done of {via: node_id} -> node_tuple)
+      
+
+
+
 
   let%expect_test ("next_node" [@tags "disabled"]) =
     let n = Node_id.create in
@@ -142,6 +161,14 @@ module Nodes = struct
      the origin has been marked as [Origin] and nodes on the shortest path have been
      marked as [Done] -- return the path from the origin to the given [distination]. *)
   let path t destination : Node_id.t list = []
+    let rec create_source_path current_node_id = 
+      match Nodes.state t current_node_id with
+      | Origin -> [current_node_id]
+      | Done of {via=previous_node_id} -> create_source_path previous_node_id @ [current_node_id]
+      | Unseen | Todo of record -> print_endline !"error: Every node should have been seen"
+    in
+    create_source_path destination
+  ;;
 
   (* Excercise 5: Write an expect test for the [path] function above. *)
   let%expect_test "path" = ()
@@ -150,7 +177,51 @@ end
 (* Exercise 6: Using the functions and types above, implement Dijkstras graph search
    algorithm! Remember to reenable unused warnings by deleting the first line of this
    file. *)
-let shortest_path ~edges ~origin ~destination : Node_id.t list = []
+
+   (*
+      1. Mark all nodes as infinite away
+      2. Mark the origin node
+      3. Find the node with the least distance
+      4. Get all unvisited neighbors
+      5. Update the distance and via of the node by comparing current_value with possible shortest
+      6. Mark the current node as finished
+      7. Go back to step 3
+      *)
+let shortest_path ~edges ~origin ~destination : Node_id.t list = 
+  let nodes_mapping = Nodes.of_edges edges in
+  Nodes.set_state nodes_mapping origin Node.State.Origin; 
+
+  let rec dijkistras_travesal () =
+    match Nodes.next_node nodes_mapping with
+    | Some src_node_id, (distance_from_source, curr_node_id) ->
+      ( 
+        let neighbors = Edges.neighbors edges curr_node_id in
+
+        (*Iterating through neighbors and updating their distance from source*)
+        
+        List.iter neighbors ~f:(fun (neighbor_id, distance_to_neighbor) -> 
+          match Nodes.state nodes_mapping neighbor_id with
+          | Unseen -> 
+            (Nodes.set_state nodes_mapping neighbor_id Node.State.Todo of {distance = distance_from_source + distance_to_neighbor; via = curr_node_id};)
+          | Todo of {distance=distance_from_source_neighbor; via=previous_node_id} ->
+            (if distance_from_source + distance_to_neighbor < distance_from_source_neighbor
+              then Nodes.set_state nodes_mapping neighbor_id Node.State.Todo of {distance = distance_from_source + distance_to_neighbor; via = curr_node_id};)
+          | Done | Origin -> ()
+         );
+        
+         (*Setting current_node to visited*)
+        Nodes.set_state nodes_mapping curr_node_id Node.State.Done of {via=src_node_id};
+
+        (*Returning to step 3*)
+        dijkistras_travesal ();
+      )
+    | None -> ()
+  in 
+
+  dijkistras_travesal ();
+
+  Nodes.path nodes_mapping destination
+;;
 
 let%expect_test ("shortest_path" [@tags "disabled"]) =
   let n = Node_id.create in

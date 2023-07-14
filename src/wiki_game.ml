@@ -137,21 +137,50 @@ let visualize_command =
    [max_depth] is useful to limit the time the program spends exploring the
    graph. *)
 
-let rec dfs_url current_url depth destination how_to_fetch =
+let rec dfs_url current_url depth destination how_to_fetch ?(visited = String.Hash_set.create ()) ()=
   if depth >= 0
   then
+    Hash_set.add visited current_url;
     if String.equal current_url destination
     then Some [ Lambda_soup_utilities.get_title current_url ] (*Recursion*)
-    else None
+    else 
+      let current_file = File_fetcher.fetch_exn how_to_fetch ~resource: current_url in 
+      let neighbors_urls = get_linked_articles current_file in 
+      List.fold neighbors_urls ~init:None ~f:(fun current_solution_path neighbor_url -> 
+        let neighbor_solution_path = 
+          (if not Hash_set.mem visited neighbors_urls
+          then 
+            dfs_url neighbors_urls (depth - 1) destination how_to_fetch visited ()
+            |> Option.map ~f:(fun resulting_path -> current_url :: resulting_path)
+          else None) 
+        in 
+        match current_solution_path, neighbor_solution_path with
+        | None, None -> None
+        | Some current_path, None -> Some current_path
+        | None, Some neighbor_path -> Some neighbor_path
+        | Some current_path, Some neighbor_path -> (
+        if (List.length current_path) > (List.length neighbor_path)
+          then Some neighbor_path
+          else Some current_path
+        )
+      )
   else None
 ;;
 
+let convert_url_path_to_title_path url_path = 
+  List.map url_path ~f:(fun url -> Lambda_soup_utilities.get_title (File_fetcher.fetch_exn url))
+;;
+
 let find_path ?(max_depth = 3) ~origin ~destination ~how_to_fetch () =
-  ignore (max_depth : int);
+  let url_path = dfs_url origin max_depth destination how_to_fetch ()
+  match url_path with
+  | None -> None
+  | Some path -> Some (convert_url_path_to_title_path path)
+  (* ignore (max_depth : int);
   ignore (origin : string);
   ignore (destination : string);
   ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO"
+  failwith "TODO" *)
 ;;
 
 let find_path_command =
