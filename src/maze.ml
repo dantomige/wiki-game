@@ -59,7 +59,7 @@ let rec maze_dfs
   ?(visited = Hash_set.create (module Position))
   ()
   =
-  print_s [%message (starting_position : Position.t)];
+  (* print_s [%message (starting_position : Position.t)]; *)
   Hash_set.add visited starting_position;
   (*Base Case*)
   if Char.equal (get_board_element board starting_position) 'E'

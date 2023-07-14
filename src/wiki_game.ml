@@ -19,7 +19,7 @@ let get_linked_articles contents : string list =
   let open Soup in
   let all_links =
     parse contents
-    $$ "a"
+    $$ "a[href]"
     |> to_list
     |> List.filter_map ~f:(fun a_node ->
          let href_string_of_node = R.attribute "href" a_node in
@@ -137,51 +137,81 @@ let visualize_command =
    [max_depth] is useful to limit the time the program spends exploring the
    graph. *)
 
-let rec dfs_url current_url depth destination how_to_fetch ?(visited = String.Hash_set.create ()) ()=
+let rec dfs_url
+  current_url
+  depth
+  destination
+  how_to_fetch
+  ?(visited = Hash_set.create (module String))
+  ()
+  =
   if depth >= 0
-  then
+  then (
     Hash_set.add visited current_url;
     if String.equal current_url destination
-    then Some [ Lambda_soup_utilities.get_title current_url ] (*Recursion*)
-    else 
-      let current_file = File_fetcher.fetch_exn how_to_fetch ~resource: current_url in 
-      let neighbors_urls = get_linked_articles current_file in 
-      List.fold neighbors_urls ~init:None ~f:(fun current_solution_path neighbor_url -> 
-        let neighbor_solution_path = 
-          (if not Hash_set.mem visited neighbors_urls
-          then 
-            dfs_url neighbors_urls (depth - 1) destination how_to_fetch visited ()
-            |> Option.map ~f:(fun resulting_path -> current_url :: resulting_path)
-          else None) 
-        in 
+    then
+      Some
+        [ Lambda_soup_utilities.get_title
+            (File_fetcher.fetch_exn how_to_fetch ~resource:current_url)
+        ]
+    else (
+      (*Recursion*)
+      let current_file =
+        File_fetcher.fetch_exn how_to_fetch ~resource:current_url
+      in
+      let neighbors_urls = get_linked_articles current_file in
+      (* print_s [%message (neighbors_urls : string list)]; *)
+      List.fold
+        neighbors_urls
+        ~init:None
+        ~f:(fun current_solution_path neighbor_url ->
+        let neighbor_url =
+          match how_to_fetch with
+          | Local _ -> neighbor_url
+          | Remote -> "https://en.wikipedia.org" ^ neighbor_url
+        in
+        (* print_s [%message (neighbor_url : string)]; print_s [%message
+           (current_url : string)]; *)
+        let neighbor_solution_path =
+          if not (Hash_set.mem visited neighbor_url)
+          then
+            dfs_url
+              neighbor_url
+              (depth - 1)
+              destination
+              how_to_fetch
+              ~visited
+              ()
+            |> Option.map ~f:(fun resulting_path ->
+                 Lambda_soup_utilities.get_title
+                   (File_fetcher.fetch_exn
+                      how_to_fetch
+                      ~resource:current_url)
+                 :: resulting_path)
+          else None
+        in
         match current_solution_path, neighbor_solution_path with
         | None, None -> None
         | Some current_path, None -> Some current_path
         | None, Some neighbor_path -> Some neighbor_path
-        | Some current_path, Some neighbor_path -> (
-        if (List.length current_path) > (List.length neighbor_path)
+        | Some current_path, Some neighbor_path ->
+          if List.length current_path > List.length neighbor_path
           then Some neighbor_path
-          else Some current_path
-        )
-      )
+          else Some current_path)))
   else None
 ;;
 
-let convert_url_path_to_title_path url_path = 
-  List.map url_path ~f:(fun url -> Lambda_soup_utilities.get_title (File_fetcher.fetch_exn url))
-;;
+(* let convert_url_path_to_title_path url_path how_to_fetch= List.map
+   url_path ~f:(fun url -> Lambda_soup_utilities.get_title
+   (File_fetcher.fetch_exn how_to_fetch ~resource:url)) ;; *)
 
 let find_path ?(max_depth = 3) ~origin ~destination ~how_to_fetch () =
-  let url_path = dfs_url origin max_depth destination how_to_fetch ()
-  match url_path with
-  | None -> None
-  | Some path -> Some (convert_url_path_to_title_path path)
-  (* ignore (max_depth : int);
-  ignore (origin : string);
-  ignore (destination : string);
-  ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO" *)
+  dfs_url origin max_depth destination how_to_fetch ()
 ;;
+
+(* ignore (max_depth : int); ignore (origin : string); ignore (destination :
+   string); ignore (how_to_fetch : File_fetcher.How_to_fetch.t); failwith
+   "TODO" *)
 
 let find_path_command =
   let open Command.Let_syntax in
@@ -191,6 +221,7 @@ let find_path_command =
        pages"
     [%map_open
       let how_to_fetch = File_fetcher.How_to_fetch.param
+      (* print_s [%message (how_to_fetch : File_fetcher.How_to_fetch.t)]; *)
       and origin = flag "origin" (required string) ~doc:" the starting page"
       and destination =
         flag "destination" (required string) ~doc:" the destination page"
